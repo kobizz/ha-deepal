@@ -8,6 +8,10 @@
 
 Custom Home Assistant integration for the Changan Deepal cloud API.
 
+This fork carries fixes validated against an Israel-market S05: CA gateway
+TSP/VCS user-token headers, current Home Assistant OptionsFlow compatibility,
+and non-blocking MQTT TLS-context creation.
+
 This integration was built against a UK-market Deepal S07 and a Portugal-market Deepal S05. S07 support includes telemetry and remote controls when enabled. S05 support is currently **read-only** via the app's MQTT telemetry path.
 
 ## Important Warnings
@@ -46,7 +50,7 @@ S05 controls are still being reverse engineered and are intentionally not expose
 1. Open HACS in Home Assistant.
 2. Go to **Integrations**.
 3. Open the three-dot menu and choose **Custom repositories**.
-4. Add `https://github.com/danperks/ha-deepal` as an **Integration** repository.
+4. Add `https://github.com/kobizz/ha-deepal` as an **Integration** repository.
 5. Install **Changan Deepal Cloud** from HACS.
 6. Restart Home Assistant.
 

@@ -427,7 +427,10 @@ class DeepalOptionsFlow(config_entries.OptionsFlow):
     """Options flow for Deepal."""
 
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+        # Home Assistant exposes config_entry as a read-only property on
+        # OptionsFlow. Keep our constructor argument under a private name for
+        # compatibility with current and older HA releases.
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
@@ -437,7 +440,7 @@ class DeepalOptionsFlow(config_entries.OptionsFlow):
             else:
                 return self.async_create_entry(title="", data=user_input)
 
-        data = self.config_entry.data | self.config_entry.options
+        data = self._config_entry.data | self._config_entry.options
         schema = vol.Schema(
             {
                 vol.Optional(CONF_SCAN_INTERVAL, default=data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): selector.NumberSelector(

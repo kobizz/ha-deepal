@@ -472,11 +472,21 @@ class DeepalClient:
             "user-agent": "okhttp/4.12.0",
         }
         if include_auth and self.tokens.access_token:
-            headers["authorization"] = (
+            authorization = (
                 f"{self.tokens.access_token}|{self.cac_token}"
                 if self.cac_token and "|" not in self.tokens.access_token
                 else self.tokens.access_token
             )
+            headers["authorization"] = authorization
+
+            # The app's composite authorization value contains a second,
+            # gateway-specific user token. CA/VOT endpoints such as
+            # getConnConf reject the request unless it is also sent in these
+            # dedicated headers.
+            _, separator, user_token = authorization.partition("|")
+            if separator and user_token:
+                headers["X-Tsp-User-Token"] = user_token
+                headers["X-VCS-User-Token"] = user_token
         return headers
 
     async def _post(
@@ -740,7 +750,10 @@ class DeepalClient:
         if not host or not login_pub_topic or not login_did or not properties_get_topic or not device_did:
             raise DeepalApiError("S05 MQTT config did not include required topics")
 
-        context = ssl.create_default_context()
+        # Loading the system trust store performs blocking filesystem I/O.
+        # Build the context in a worker so MQTT setup does not block Home
+        # Assistant's event loop.
+        context = await asyncio.to_thread(ssl.create_default_context)
         reader: asyncio.StreamReader
         writer: asyncio.StreamWriter
         reader, writer = await asyncio.wait_for(
