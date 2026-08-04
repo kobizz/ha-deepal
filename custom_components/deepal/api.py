@@ -250,23 +250,7 @@ def _s05_command_result_error(
     payload: dict[str, Any], secret_key: str, req_id: str
 ) -> str | None:
     """Return an explicit command error from a correlated MQTT response."""
-    items: list[dict[str, Any]] = []
-    for field in ("rs", "sers"):
-        value = payload.get(field)
-        if isinstance(value, str) and value:
-            try:
-                items.extend(_s05_aes_decrypt(value, secret_key, req_id))
-            except (
-                ValueError,
-                binascii.Error,
-                json.JSONDecodeError,
-                gzip.BadGzipFile,
-            ) as err:
-                raise DeepalApiError(
-                    f"Could not decrypt S05 command response: {err}"
-                ) from err
-        elif isinstance(value, list):
-            items.extend(item for item in value if isinstance(item, dict))
+    items = _s05_command_response_items(payload, secret_key, req_id)
 
     candidates: list[dict[str, Any]] = [payload, *items]
     for key in ("h", "header", "d", "data"):
@@ -322,6 +306,53 @@ def _s05_command_result_error(
                     return f"{detail} ({detail_code})"
                 return str(message or f"result code {code}")
     return None
+
+
+def _s05_command_response_items(
+    payload: dict[str, Any], secret_key: str, req_id: str
+) -> list[dict[str, Any]]:
+    """Decrypt the result items in an S05 command response."""
+    items: list[dict[str, Any]] = []
+    for field in ("rs", "sers"):
+        value = payload.get(field)
+        if isinstance(value, str) and value:
+            try:
+                items.extend(_s05_aes_decrypt(value, secret_key, req_id))
+            except (
+                ValueError,
+                binascii.Error,
+                json.JSONDecodeError,
+                gzip.BadGzipFile,
+            ) as err:
+                raise DeepalApiError(
+                    f"Could not decrypt S05 command response: {err}"
+                ) from err
+        elif isinstance(value, list):
+            items.extend(item for item in value if isinstance(item, dict))
+    return items
+
+
+def _s05_command_response_log_view(
+    payload: dict[str, Any], secret_key: str, req_id: str
+) -> dict[str, Any]:
+    """Return a useful command response view without IDs or ciphertext."""
+    status_keys = (
+        "mt",
+        "e",
+        "z",
+        "tf",
+        "a",
+        "success",
+        "code",
+        "resultCode",
+        "result_code",
+        "msg",
+        "message",
+    )
+    return {
+        "envelope": {key: payload[key] for key in status_keys if key in payload},
+        "items": _s05_command_response_items(payload, secret_key, req_id),
+    }
 
 
 def _s05_payload_req_id(payload: dict[str, Any]) -> str | None:
@@ -1062,6 +1093,15 @@ class DeepalClient:
 
                 response_req_id = _s05_payload_req_id(payload)
                 if response_req_id == wake_req_id and command_req_id is None:
+                    if self.enable_api_logging:
+                        _LOGGER.warning(
+                            "Deepal MQTT debug response phase=wake body=%s",
+                            _redact_for_log(
+                                _s05_command_response_log_view(
+                                    payload, secret_key, wake_req_id
+                                )
+                            ),
+                        )
                     # A car that is already awake may reject the redundant wake
                     # request. Either response proves the wake request was
                     # processed, so proceed with the user's command once.
@@ -1082,6 +1122,21 @@ class DeepalClient:
 
                 if command_req_id is None or response_req_id != command_req_id:
                     continue
+                if self.enable_api_logging:
+                    _LOGGER.warning(
+                        "Deepal MQTT debug request phase=command service=%s method=%s params=%s",
+                        service_code,
+                        method,
+                        _redact_for_log(params),
+                    )
+                    _LOGGER.warning(
+                        "Deepal MQTT debug response phase=command body=%s",
+                        _redact_for_log(
+                            _s05_command_response_log_view(
+                                payload, secret_key, command_req_id
+                            )
+                        ),
+                    )
                 error = _s05_command_result_error(payload, secret_key, command_req_id)
                 if error:
                     raise DeepalApiError(f"S05 command failed: {error}")
