@@ -1358,7 +1358,7 @@ class DeepalClient:
         sers = [
             {
                 "service_code": service_code,
-                "method": method,
+                "command_code": method,
                 "params": params,
             }
         ]
