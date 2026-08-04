@@ -29,10 +29,18 @@ from .const import BASE_URL, CA_BASE_URL, REQUEST_ENCRYPTION_PUBLIC_KEY
 
 _LOGGER = logging.getLogger(__name__)
 
-_S05_OPEN_OR_UNLOCK = 1
-_S05_CLOSE_OR_LOCK = 2
+# The S05 Door_Lock motor enum is lock=1, unlock=2. This differs from the
+# open/close request enum used by the tailgate.
+_S05_LOCK = 1
+_S05_UNLOCK = 2
+_S05_OPEN = 1
+_S05_CLOSE = 2
 _S05_POSITION_OPEN = 100
 _S05_POSITION_CLOSED = 0
+
+_S05_VEHICLE_ERROR_MESSAGES = {
+    "VVCC_-1_-1_02_023": "door status does not meet the command requirements",
+}
 
 _REDACTED = "[redacted]"
 _MAX_LOG_STRING_LENGTH = 500
@@ -295,9 +303,11 @@ def _s05_command_result_error(
                 "SUCCESS",
                 "success",
             ):
-                return str(
-                    item.get("msg") or item.get("message") or f"result code {code}"
-                )
+                detail = _S05_VEHICLE_ERROR_MESSAGES.get(str(code))
+                message = item.get("msg") or item.get("message")
+                if detail:
+                    return f"{detail} ({code})"
+                return str(message or f"result code {code}")
     return None
 
 
@@ -859,9 +869,7 @@ class DeepalClient:
             vehicle_id,
             service_code="Door_Lock",
             method="Cnr_RR_ObjDrv",
-            params={
-                "MotCtrl": _S05_OPEN_OR_UNLOCK if open_value else _S05_CLOSE_OR_LOCK
-            },
+            params={"MotCtrl": _S05_UNLOCK if open_value else _S05_LOCK},
         )
 
     async def s05_control_windows(self, *, vehicle_id: str, open_value: bool) -> str:
@@ -882,9 +890,7 @@ class DeepalClient:
             service_code="TailGateDrv",
             method="Cnr_TailGateDrv_ReqSt",
             params={
-                "ReqTypeDoor": _S05_OPEN_OR_UNLOCK
-                if open_value
-                else _S05_CLOSE_OR_LOCK,
+                "ReqTypeDoor": _S05_OPEN if open_value else _S05_CLOSE,
                 "TarPosnPerc": _S05_POSITION_OPEN
                 if open_value
                 else _S05_POSITION_CLOSED,
