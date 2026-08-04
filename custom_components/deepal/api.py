@@ -37,6 +37,7 @@ _S05_OPEN = 1
 _S05_CLOSE = 2
 _S05_POSITION_OPEN = 100
 _S05_POSITION_CLOSED = 0
+_S05_WAKE_SETTLE_SECONDS = 2
 
 _S05_VEHICLE_ERROR_MESSAGES = {
     "VVCC_-1_-1_02_023": "door status does not meet the command requirements",
@@ -303,10 +304,22 @@ def _s05_command_result_error(
                 "SUCCESS",
                 "success",
             ):
-                detail = _S05_VEHICLE_ERROR_MESSAGES.get(str(code))
                 message = item.get("msg") or item.get("message")
+                detail = _S05_VEHICLE_ERROR_MESSAGES.get(str(code))
+                detail_code = str(code)
+                if detail is None and message:
+                    match = next(
+                        (
+                            (error_code, text)
+                            for error_code, text in _S05_VEHICLE_ERROR_MESSAGES.items()
+                            if error_code in str(message)
+                        ),
+                        None,
+                    )
+                    if match:
+                        detail_code, detail = match
                 if detail:
-                    return f"{detail} ({code})"
+                    return f"{detail} ({detail_code})"
                 return str(message or f"result code {code}")
     return None
 
@@ -929,10 +942,11 @@ class DeepalClient:
         method: str,
         params: dict[str, Any],
     ) -> str:
-        """Publish one correlated S05 command and wait for its broker response.
+        """Wake the S05, publish one command, and wait for its broker response.
 
-        Commands are deliberately never retried: a lost acknowledgement must not
-        cause a second physical action.
+        The wake-up request does not move any vehicle component. The requested
+        physical command is deliberately published exactly once: a lost
+        acknowledgement must not cause a second physical action.
         """
         if not self.commands_available:
             raise DeepalCommandNotReady(
@@ -1008,9 +1022,10 @@ class DeepalClient:
             )
             await writer.drain()
 
+            wake_req_id: str | None = None
             command_req_id: str | None = None
             secret_key: str | None = None
-            deadline = time.monotonic() + 30
+            deadline = time.monotonic() + 45
             while time.monotonic() < deadline:
                 first, body = await asyncio.wait_for(
                     _mqtt_read_packet(reader),
@@ -1026,26 +1041,46 @@ class DeepalClient:
                 if secret_key is None:
                     secret_key = self._s05_secret_from_payload(payload)
                     if secret_key:
-                        command_req_id = self._s05_req_id(device_did)
-                        request = self._s05_command_request_payload(
+                        wake_req_id = self._s05_req_id(device_did)
+                        wake_request = self._s05_command_request_payload(
                             device_did,
                             login_did,
                             secret_key,
-                            command_req_id,
-                            service_code=service_code,
-                            method=method,
-                            params=params,
+                            wake_req_id,
+                            service_code="TxWakeup",
+                            method="Cnr_ReWakeup",
+                            params={},
                         )
-                        writer.write(_mqtt_publish_packet(command_pub_topic, request))
+                        writer.write(
+                            _mqtt_publish_packet(command_pub_topic, wake_request)
+                        )
                         await writer.drain()
                     continue
 
-                if (
-                    topic != command_res_topic
-                    or _s05_payload_req_id(payload) != command_req_id
-                ):
+                if topic != command_res_topic:
                     continue
-                if command_req_id is None:
+
+                response_req_id = _s05_payload_req_id(payload)
+                if response_req_id == wake_req_id and command_req_id is None:
+                    # A car that is already awake may reject the redundant wake
+                    # request. Either response proves the wake request was
+                    # processed, so proceed with the user's command once.
+                    await asyncio.sleep(_S05_WAKE_SETTLE_SECONDS)
+                    command_req_id = self._s05_req_id(device_did)
+                    request = self._s05_command_request_payload(
+                        device_did,
+                        login_did,
+                        secret_key,
+                        command_req_id,
+                        service_code=service_code,
+                        method=method,
+                        params=params,
+                    )
+                    writer.write(_mqtt_publish_packet(command_pub_topic, request))
+                    await writer.drain()
+                    continue
+
+                if command_req_id is None or response_req_id != command_req_id:
                     continue
                 error = _s05_command_result_error(payload, secret_key, command_req_id)
                 if error:
