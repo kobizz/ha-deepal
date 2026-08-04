@@ -30,12 +30,20 @@ _LOGGER = logging.getLogger(__name__)
 class DeepalDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Fetch vehicle list and condition data."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, client: DeepalClient, vehicle_id: str) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        client: DeepalClient,
+        vehicle_id: str,
+    ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{entry.entry_id}",
-            update_interval=timedelta(seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)),
+            update_interval=timedelta(
+                seconds=entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+            ),
         )
         self.entry = entry
         self.client = client
@@ -59,7 +67,9 @@ class DeepalDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 vehicles, condition = await self._async_fetch()
             except (DeepalApiError, DeepalAuthError) as refresh_err:
                 self._record_refresh_failure(refresh_err)
-                raise ConfigEntryAuthFailed(f"Authentication failed: {refresh_err}") from refresh_err
+                raise ConfigEntryAuthFailed(
+                    f"Authentication failed: {refresh_err}"
+                ) from refresh_err
         except DeepalApiError as err:
             self._record_refresh_failure(err)
             raise UpdateFailed(str(err)) from err
@@ -79,9 +89,14 @@ class DeepalDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             condition = await self.client.condition(self.vehicle_id)
         return vehicles, condition
 
-    def _vehicle_from_list(self, vehicles: list[dict[str, Any]]) -> dict[str, Any] | None:
+    def _vehicle_from_list(
+        self, vehicles: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
         """Return the configured vehicle metadata from a vehicle list response."""
-        return next((item for item in vehicles if str(item.get("carId")) == self.vehicle_id), None)
+        return next(
+            (item for item in vehicles if str(item.get("carId")) == self.vehicle_id),
+            None,
+        )
 
     @staticmethod
     def _vehicle_uses_mqtt(vehicle: dict[str, Any]) -> bool:
@@ -104,11 +119,15 @@ class DeepalDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if now < self._next_active_refresh_at:
             return
 
-        interval = self.entry.options.get(CONF_ACTIVE_REFRESH_INTERVAL, DEFAULT_ACTIVE_REFRESH_INTERVAL)
+        interval = self.entry.options.get(
+            CONF_ACTIVE_REFRESH_INTERVAL, DEFAULT_ACTIVE_REFRESH_INTERVAL
+        )
         self._next_active_refresh_at = now + interval
         try:
             await self.async_execute_command(
-                lambda: self.client.control_condition_inquiry(vehicle_id=self.vehicle_id),
+                lambda: self.client.control_condition_inquiry(
+                    vehicle_id=self.vehicle_id
+                ),
                 raise_if_busy=False,
                 timeout=30,
             )
@@ -127,13 +146,25 @@ class DeepalDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Run one command, blocking duplicate commands until fresh condition data arrives."""
         if self._command_in_progress:
             if raise_if_busy:
-                raise HomeAssistantError("A Deepal command is already in progress; wait for vehicle data to refresh")
+                raise HomeAssistantError(
+                    "A Deepal command is already in progress; wait for vehicle data to refresh"
+                )
             return
 
         self._command_in_progress = True
         try:
             previous_last_updated = self._condition_last_updated()
             command_id = await send_command()
+            if self.vehicle_uses_mqtt:
+                try:
+                    await self.async_request_refresh()
+                except (DeepalApiError, UpdateFailed) as err:
+                    _LOGGER.warning(
+                        "S05 command %s was acknowledged but the follow-up state refresh failed: %s",
+                        command_id,
+                        err,
+                    )
+                return
             await self.async_poll_command_update(
                 command_id,
                 previous_last_updated=previous_last_updated,
@@ -159,19 +190,25 @@ class DeepalDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         condition_changed = False
 
         while True:
-            result = await self.client.control_result(vehicle_id=self.vehicle_id, command_id=command_id)
+            result = await self.client.control_result(
+                vehicle_id=self.vehicle_id, command_id=command_id
+            )
             condition = await self.client.condition(self.vehicle_id)
             self._async_set_condition(condition)
 
             last_updated = self._condition_last_updated(condition)
-            condition_changed = bool(last_updated) and last_updated != previous_last_updated
+            condition_changed = (
+                bool(last_updated) and last_updated != previous_last_updated
+            )
             state_done = is_done() if is_done is not None else True
             if condition_changed and state_done:
                 return
 
             result_code = result.get("resultCode")
             if result_code not in (None, -100, 0, 1015):
-                raise HomeAssistantError(f"Deepal command failed with result code {result_code}: {result.get('errorMsg')}")
+                raise HomeAssistantError(
+                    f"Deepal command failed with result code {result_code}: {result.get('errorMsg')}"
+                )
 
             if loop.time() >= deadline:
                 if not condition_changed:
@@ -190,7 +227,9 @@ class DeepalDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["condition"] = condition
         self.async_set_updated_data(data)
 
-    def _condition_last_updated(self, condition: dict[str, Any] | None = None) -> str | None:
+    def _condition_last_updated(
+        self, condition: dict[str, Any] | None = None
+    ) -> str | None:
         """Return the condition last-updated marker as a stable string."""
         if condition is None:
             condition = (self.data or {}).get("condition") or {}

@@ -83,7 +83,9 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_LOGIN_METHOD, default=LOGIN_METHOD_EMAIL): vol.In(LOGIN_METHOD_OPTIONS),
+                vol.Required(CONF_LOGIN_METHOD, default=LOGIN_METHOD_EMAIL): vol.In(
+                    LOGIN_METHOD_OPTIONS
+                ),
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema)
@@ -91,7 +93,9 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reauth(self, entry_data: dict[str, Any]):
         """Repair an existing entry whose app session has been invalidated."""
         entry_id = self.context.get("entry_id")
-        self._reauth_entry = self.hass.config_entries.async_get_entry(entry_id) if entry_id else None
+        self._reauth_entry = (
+            self.hass.config_entries.async_get_entry(entry_id) if entry_id else None
+        )
         return await self.async_step_user()
 
     async def async_step_phone(self, user_input: dict[str, Any] | None = None):
@@ -120,9 +124,15 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except DeepalRateLimitError:
                 errors["base"] = "too_many_codes"
             except DeepalApiError as err:
-                _LOGGER.warning("Deepal SMS code request failed for country=%s: %s", selected_country, err)
+                _LOGGER.warning(
+                    "Deepal SMS code request failed for country=%s: %s",
+                    selected_country,
+                    err,
+                )
                 errors["base"] = (
-                    "account_not_registered" if "CAC_1_1_01_024" in str(err) else "send_code_failed"
+                    "account_not_registered"
+                    if "CAC_1_1_01_024" in str(err)
+                    else "send_code_failed"
                 )
             else:
                 self._phone_login = {
@@ -139,7 +149,9 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_COUNTRY, default=DEFAULT_COUNTRY): vol.In(COUNTRY_OPTIONS),
+                vol.Required(CONF_COUNTRY, default=DEFAULT_COUNTRY): vol.In(
+                    COUNTRY_OPTIONS
+                ),
                 vol.Required("mobile"): str,
             }
         )
@@ -172,9 +184,15 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except DeepalRateLimitError:
                 errors["base"] = "too_many_codes"
             except DeepalApiError as err:
-                _LOGGER.warning("Deepal email code request failed for country=%s: %s", selected_country, err)
+                _LOGGER.warning(
+                    "Deepal email code request failed for country=%s: %s",
+                    selected_country,
+                    err,
+                )
                 errors["base"] = (
-                    "account_not_registered" if "CAC_1_1_01_024" in str(err) else "send_email_code_failed"
+                    "account_not_registered"
+                    if "CAC_1_1_01_024" in str(err)
+                    else "send_email_code_failed"
                 )
             else:
                 self._email_login = {
@@ -191,7 +209,9 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         schema = vol.Schema(
             {
-                vol.Required(CONF_COUNTRY, default=DEFAULT_COUNTRY): vol.In(COUNTRY_OPTIONS),
+                vol.Required(CONF_COUNTRY, default=DEFAULT_COUNTRY): vol.In(
+                    COUNTRY_OPTIONS
+                ),
                 vol.Required(CONF_EMAIL): str,
             }
         )
@@ -236,20 +256,20 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "no_vehicles"
                 else:
                     if self._reauth_entry is not None:
-                        return await self._async_finish_reauth(login, vehicles, info, code_step="email_code")
-                    self._login_result = {"login": login, "vehicles": vehicles, "info": info}
-                    if self._vehicle_uses_mqtt(vehicles[0]):
-                        return await self._async_create_login_entry(
-                            login,
-                            vehicles,
-                            info,
-                            enable_commands=False,
-                            control_pin="",
+                        return await self._async_finish_reauth(
+                            login, vehicles, info, code_step="email_code"
                         )
+                    self._login_result = {
+                        "login": login,
+                        "vehicles": vehicles,
+                        "info": info,
+                    }
                     return await self.async_step_commands()
 
         schema = vol.Schema({vol.Required("auth_code"): str})
-        return self.async_show_form(step_id="email_code", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="email_code", data_schema=schema, errors=errors
+        )
 
     async def async_step_sms(self, user_input: dict[str, Any] | None = None):
         """Complete phone login with the SMS code."""
@@ -288,15 +308,11 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 else:
                     if self._reauth_entry is not None:
                         return await self._async_finish_reauth(login, vehicles, info)
-                    self._login_result = {"login": login, "vehicles": vehicles, "info": info}
-                    if self._vehicle_uses_mqtt(vehicles[0]):
-                        return await self._async_create_login_entry(
-                            login,
-                            vehicles,
-                            info,
-                            enable_commands=False,
-                            control_pin="",
-                        )
+                    self._login_result = {
+                        "login": login,
+                        "vehicles": vehicles,
+                        "info": info,
+                    }
                     return await self.async_step_commands()
 
         schema = vol.Schema({vol.Required("auth_code"): str})
@@ -328,7 +344,9 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Optional(CONF_CONTROL_PIN): str,
             }
         )
-        return self.async_show_form(step_id="commands", data_schema=schema, errors=errors)
+        return self.async_show_form(
+            step_id="commands", data_schema=schema, errors=errors
+        )
 
     async def _async_create_login_entry(
         self,
@@ -344,7 +362,6 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         vehicle_id = str(vehicle["carId"])
         await self.async_set_unique_id(vehicle_id)
         self._abort_if_unique_id_configured()
-        is_mqtt = self._vehicle_uses_mqtt(vehicle)
         data = {
             CONF_VEHICLE_ID: vehicle_id,
             CONF_ACCESS_TOKEN: login["token"],
@@ -358,9 +375,9 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             CONF_APP_VERSION: info.get(CONF_APP_VERSION, DEFAULT_APP_VERSION),
             CONF_DEVICE_ID: info[CONF_DEVICE_ID],
             CONF_PRIVATE_KEY: info[CONF_PRIVATE_KEY],
-            CONF_ENABLE_COMMANDS: False if is_mqtt else enable_commands,
+            CONF_ENABLE_COMMANDS: enable_commands,
         }
-        if control_pin and not is_mqtt:
+        if control_pin:
             data[CONF_CONTROL_PIN] = control_pin
         title = vehicle.get("vin") or vehicle.get("modelName") or f"Deepal {vehicle_id}"
         return self.async_create_entry(title=title, data=data)
@@ -376,7 +393,14 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Update the existing entry with fresh app-login material."""
         assert self._reauth_entry is not None
         existing_vehicle_id = str(self._reauth_entry.data[CONF_VEHICLE_ID])
-        vehicle = next((item for item in vehicles if str(item.get("carId")) == existing_vehicle_id), None)
+        vehicle = next(
+            (
+                item
+                for item in vehicles
+                if str(item.get("carId")) == existing_vehicle_id
+            ),
+            None,
+        )
         if vehicle is None:
             return self.async_show_form(
                 step_id=code_step,
@@ -400,9 +424,6 @@ class DeepalConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_PRIVATE_KEY: info[CONF_PRIVATE_KEY],
             }
         )
-        if self._vehicle_uses_mqtt(vehicle):
-            new_data[CONF_ENABLE_COMMANDS] = False
-            new_data.pop(CONF_CONTROL_PIN, None)
         # rcToken is session-derived. A stored control PIN can mint a fresh rcToken later.
         new_data.pop(CONF_RC_TOKEN, None)
         return self.async_update_reload_and_abort(
@@ -435,7 +456,10 @@ class DeepalOptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
         errors: dict[str, str] = {}
         if user_input is not None:
-            if user_input.get(CONF_ENABLE_COMMANDS) and not str(user_input.get(CONF_CONTROL_PIN) or "").strip():
+            if (
+                user_input.get(CONF_ENABLE_COMMANDS)
+                and not str(user_input.get(CONF_CONTROL_PIN) or "").strip()
+            ):
                 errors[CONF_CONTROL_PIN] = "pin_required"
             else:
                 return self.async_create_entry(title="", data=user_input)
@@ -443,7 +467,10 @@ class DeepalOptionsFlow(config_entries.OptionsFlow):
         data = self._config_entry.data | self._config_entry.options
         schema = vol.Schema(
             {
-                vol.Optional(CONF_SCAN_INTERVAL, default=data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)): selector.NumberSelector(
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=30,
                         max=3600,
@@ -452,7 +479,12 @@ class DeepalOptionsFlow(config_entries.OptionsFlow):
                         unit_of_measurement="s",
                     )
                 ),
-                vol.Optional(CONF_ACTIVE_REFRESH_INTERVAL, default=data.get(CONF_ACTIVE_REFRESH_INTERVAL, DEFAULT_ACTIVE_REFRESH_INTERVAL)): selector.NumberSelector(
+                vol.Optional(
+                    CONF_ACTIVE_REFRESH_INTERVAL,
+                    default=data.get(
+                        CONF_ACTIVE_REFRESH_INTERVAL, DEFAULT_ACTIVE_REFRESH_INTERVAL
+                    ),
+                ): selector.NumberSelector(
                     selector.NumberSelectorConfig(
                         min=60,
                         max=3600,
@@ -461,9 +493,16 @@ class DeepalOptionsFlow(config_entries.OptionsFlow):
                         unit_of_measurement="s",
                     )
                 ),
-                vol.Optional(CONF_CONTROL_PIN, default=data.get(CONF_CONTROL_PIN, "")): str,
-                vol.Optional(CONF_ENABLE_COMMANDS, default=data.get(CONF_ENABLE_COMMANDS, False)): bool,
-                vol.Optional(CONF_ENABLE_API_LOGGING, default=data.get(CONF_ENABLE_API_LOGGING, False)): bool,
+                vol.Optional(
+                    CONF_CONTROL_PIN, default=data.get(CONF_CONTROL_PIN, "")
+                ): str,
+                vol.Optional(
+                    CONF_ENABLE_COMMANDS, default=data.get(CONF_ENABLE_COMMANDS, False)
+                ): bool,
+                vol.Optional(
+                    CONF_ENABLE_API_LOGGING,
+                    default=data.get(CONF_ENABLE_API_LOGGING, False),
+                ): bool,
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

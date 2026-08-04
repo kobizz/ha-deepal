@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.cover import CoverDeviceClass, CoverEntity, CoverEntityFeature
+from homeassistant.components.cover import (
+    CoverDeviceClass,
+    CoverEntity,
+    CoverEntityFeature,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -15,10 +19,10 @@ from .coordinator import DeepalDataUpdateCoordinator
 from .entity import DeepalEntity
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     coordinator: DeepalDataUpdateCoordinator = entry.runtime_data
-    if coordinator.vehicle_uses_mqtt:
-        return
     async_add_entities([DeepalWindowsCover(coordinator), DeepalBootCover(coordinator)])
 
 
@@ -35,6 +39,7 @@ class _DeepalOpenCloseCover(DeepalEntity, CoverEntity):
 
     async def _async_control(self, *, open_value: bool) -> None:
         raise NotImplementedError
+
 
 class DeepalWindowsCover(_DeepalOpenCloseCover):
     """All-window open/close control."""
@@ -55,11 +60,24 @@ class DeepalWindowsCover(_DeepalOpenCloseCover):
 
     async def _async_control(self, *, open_value: bool) -> None:
         try:
+            client = self.coordinator.client
+            send_command = (
+                (
+                    lambda: client.s05_control_windows(
+                        vehicle_id=self.coordinator.vehicle_id,
+                        open_value=open_value,
+                    )
+                )
+                if self.coordinator.vehicle_uses_mqtt
+                else (
+                    lambda: client.control_windows(
+                        vehicle_id=self.coordinator.vehicle_id,
+                        open_value=open_value,
+                    )
+                )
+            )
             await self.async_execute_command(
-                lambda: self.coordinator.client.control_windows(
-                    vehicle_id=self.coordinator.vehicle_id,
-                    open_value=open_value,
-                ),
+                send_command,
                 is_done=lambda: self.is_closed is (not open_value),
             )
         except DeepalCommandAuthError as err:
@@ -87,11 +105,24 @@ class DeepalBootCover(_DeepalOpenCloseCover):
 
     async def _async_control(self, *, open_value: bool) -> None:
         try:
+            client = self.coordinator.client
+            send_command = (
+                (
+                    lambda: client.s05_control_trunk(
+                        vehicle_id=self.coordinator.vehicle_id,
+                        open_value=open_value,
+                    )
+                )
+                if self.coordinator.vehicle_uses_mqtt
+                else (
+                    lambda: client.control_trunk(
+                        vehicle_id=self.coordinator.vehicle_id,
+                        open_value=open_value,
+                    )
+                )
+            )
             await self.async_execute_command(
-                lambda: self.coordinator.client.control_trunk(
-                    vehicle_id=self.coordinator.vehicle_id,
-                    open_value=open_value,
-                ),
+                send_command,
                 is_done=lambda: self.is_closed is (not open_value),
             )
         except DeepalCommandAuthError as err:

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature, HVACMode
+from homeassistant.components.climate import (
+    ClimateEntity,
+    ClimateEntityFeature,
+    HVACMode,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
@@ -20,7 +24,9 @@ def _tenths_c(value: Any) -> float | None:
     return (value / 10) if isinstance(value, int | float) else None
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+) -> None:
     coordinator: DeepalDataUpdateCoordinator = entry.runtime_data
     async_add_entities([DeepalClimate(coordinator)])
 
@@ -101,15 +107,21 @@ class DeepalClimate(DeepalEntity, ClimateEntity):
 
     async def async_turn_on(self) -> None:
         self._raise_if_read_only()
-        await self._async_send(enabled=True, target_temperature=self.target_temperature or 21)
+        await self._async_send(
+            enabled=True, target_temperature=self.target_temperature or 21
+        )
 
     async def async_turn_off(self) -> None:
         self._raise_if_read_only()
-        await self._async_send(enabled=False, target_temperature=self.target_temperature or 21)
+        await self._async_send(
+            enabled=False, target_temperature=self.target_temperature or 21
+        )
 
     def _raise_if_read_only(self) -> None:
         if self.coordinator.vehicle_uses_mqtt:
-            raise HomeAssistantError("S05 MQTT vehicles are read-only in this version")
+            raise HomeAssistantError(
+                "S05 climate control is not supported in this version"
+            )
 
     async def _async_send(self, *, enabled: bool, target_temperature: float) -> None:
         try:
